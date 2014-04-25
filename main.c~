@@ -1,0 +1,105 @@
+/*
+* NAME
+*   digenv - prints sorts and filters envoriment variables
+* 
+* SYNOPSIS
+*   digenv [grep arguments]
+* 
+* DESCRIPTION
+*   Digenv does the same thing as executing printenv | grep [args] | sort | less
+*   Grep is omitted if no arguments are specified
+* 
+* Author
+*   Paul Griffin, pgriffin@kth.se
+*/ 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+void pipea(int fin, char** programs[]);
+/*Loads data from command line and prepares and starts the execution of the other programs*/
+/** main
+ * 
+ * main returns 0 if ok error code if not
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ */
+  
+int main(int argc,char *argv[])
+{
+	char * pager=getenv("PAGER");
+	
+	char * printenv[] = {"printenv",NULL};
+	char * sort[] = {"sort",NULL};
+	char * less[] = {"less",NULL};
+	if (pager==NULL) printf("asd");
+
+
+	
+	if (argc>1)
+	{
+		argv[0] = "grep";
+		char ** programs[] = {printenv,argv,sort,less,NULL};
+		pipea(STDIN_FILENO, programs);	
+	}else{
+		char ** programs[] = {printenv,sort,less,NULL};
+		pipea(STDIN_FILENO, programs);	
+	}
+	return 0;//TODO returnera skr'p
+}
+/*Exikverar programmen med argumenten i listan programs och pipear deras resultat fran forsta till nasta*/
+void pipea(int fin, char** programs[])
+{
+	char * program = *programs[0];
+	char ** args = programs[0];
+	programs++;
+	
+	/*Check if this is the last program. This is inportant for the last pipe*/
+	int lastProgram = 0;
+	if (programs[0]==NULL) lastProgram=1;
+	
+	
+	int fd[2];
+	int ret=pipe(fd);
+	if (ret) { printf("Failed to create pipe\n"); return;}
+	
+	int childPid=fork();
+	if (childPid==-1){ printf("could not fork\n"); return;}
+	
+	if (!childPid)
+	{/*Child process - Close and duplicate pipes for reading and writing then execute program*/
+		ret = close(fd[0]);
+		if (ret) { printf("failed to colse pipe(non critical)\n");}
+		ret = dup2(fin,STDIN_FILENO);
+		if (ret) { printf("failed to duplicate pipe\n"); return;}
+		
+		if (!lastProgram)
+		{
+			dup2(fd[1],STDOUT_FILENO);
+			if (ret) { printf("failed to duplicate pipe\n"); return;}	
+		}
+		execvp(program,args);
+	}
+	else
+	{/*Main process - Wait for return value then recurse*/
+		int statval;
+
+		wait(&statval);
+		if (statval!=0) { printf("Error with code %d from %s\n",statval,program); return;}
+		close(fd[1]);
+		if (ret) { printf("failed to close pipe(non critical)\n");}
+		
+		
+		if (!lastProgram)
+			pipea(fd[0],programs);
+	}
+}
+
+
